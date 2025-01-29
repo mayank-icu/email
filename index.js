@@ -7,29 +7,53 @@ const port = process.env.PORT || 3000;
 // Middleware to parse JSON
 app.use(express.json());
 
-// Create Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASSWORD
+// Email account configuration
+const emailAccounts = [
+  {
+    user: process.env.GMAIL_USER1,
+    pass: process.env.GMAIL_PASSWORD1
+  },
+  {
+    user: process.env.GMAIL_USER2,
+    pass: process.env.GMAIL_PASSWORD2
   }
-});
+];
+
+// Create transporters for both accounts
+const transporters = emailAccounts.map(account => ({
+  transporter: nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: account.user,
+      pass: account.pass
+    }
+  }),
+  user: account.user
+}));
+
+let currentTransporterIndex = 0;
+
+// Switch transporter every 60 minutes (60 * 60 * 1000 ms)
+setInterval(() => {
+  currentTransporterIndex = (currentTransporterIndex + 1) % transporters.length;
+  console.log(`Switched to email account: ${transporters[currentTransporterIndex].user}`);
+}, 60 * 60 * 1000);
 
 // Email sending endpoint
 app.post('/send-email', async (req, res) => {
   try {
     const { to, subject, text } = req.body;
+    const currentTransporter = transporters[currentTransporterIndex];
 
     const mailOptions = {
-      from: process.env.GMAIL_USER,
+      from: currentTransporter.user,
       to,
       subject,
       text
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent:', info.messageId);
+    const info = await currentTransporter.transporter.sendMail(mailOptions);
+    console.log(`Email sent using ${currentTransporter.user}:`, info.messageId);
     res.status(200).json({ message: 'Email sent successfully', info });
   } catch (error) {
     console.error('Error sending email:', error);
@@ -39,4 +63,5 @@ app.post('/send-email', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+  console.log(`Initial email account: ${transporters[currentTransporterIndex].user}`);
 });
